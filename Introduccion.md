@@ -1,4 +1,38 @@
-Instalación:
+# Kubernetes
+## Introducción
+### Aquitectura de microservicios:
+**Aplicación monolítica**:
+- Todos los componentes en el mismo nodo.
+- Escalado vertical.
+- Arquitectura muy sencilla.
+- Suele utilizarse un solo servicio.
+
+**Aplicación distribuida**:
+- Idealmente un componente por nodo.
+- Escalado horizontal.
+- Arquitectura más compleja.
+- Menos interferencias entre componentes.
+- Mayor simplicidad en las actualizaciones.
+- Diferentes enfoques no excluyentes: SOA, cloud native, microservicios...
+
+**Microservicios**:
+- Deriva del esquema SOA.
+- Solución más pragmática.
+- Servicios llevados a la mínima expresión (idealmente un proceso por nodo).
+- Comunicación vía HTTP REST y colas de mensajes, con el protocolo gRPC.
+- Comando con procesos ágiles de desarrollo, facilita enormemente la actualizaciones de versiones, llegando incluso a la entrega continua o despliegue continuo.
+- Suele implementarse sobre contenedores.
+- Aumenta de lantencia entre componentes.
+
+## Usos y mejoras de docker
+- Balanceador de carga entre contenedores.
+- Conexión entre conectedores.
+- Actualizaciones sin interrupción.
+- Variación a demanda el número de réplicas.
+
+Tiene capacidad para crear nuevos nodos si le hace falta, porque tiene driver compatibles con la nube. Esta característica se pierde en cloud físicos.
+
+## Instalación
 ~~~
 paloma@coatlicue:~/kubernete$ curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 \
 > && chmod +x minikube
