@@ -230,5 +230,12 @@ nginx-79f5849f8d-mbq4p   1/1     Running   0          23s   172.17.0.7   minikub
 nginx-79f5849f8d-wl2qc   1/1     Running   0          23s   172.17.0.6   minikube   <none>           <none>
 ~~~
 
+## Services
+Un sercicio es una abstracción que define un conjunto de pods que implementa un micro-servicio. Ofrece una dirección virtual y un nombre que identifica al conjunto de pods que representa, al cual nos podemos conectar. 
 
+Los servicios se implementan con iptables que va a crear reglas en la tabla nat para que direcciones que vengan de un determinado puerto e ip va a determino destino. 
+
+- **ClusterIP**: solo permite el acceso interno entre distintos servicios. Es un tipo por defecto. Podemos acceder desde el exterior con la instrucción **kubectl proxy**, puede ser de gran ayuda para los desarrolladores. 
+- **NodePort**: abre un puerto para que el servicio sea accesible desde el exteior. Por defecto el puerto generado está en el rango de 30000:40000. Para acceder usamos la ip del servidor master del cluster y el puerto asignado. 
+- **LoadBalancer**: este tipo solo está soportado en servicios de cloud público. El proveedor asignara un recurso de balanceo de carga para el acceso a los servicios. Si usamos un cloud privado, como OpenStack, necesitaremos un plugin para configurar el funcionamiento. 
 
