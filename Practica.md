@@ -585,6 +585,311 @@ pod/wordpress-deployment-8f6d4fd4d-774pw   1/1     Running   0          2m58s
 
 Y ya está lista la aplicación:
 ![wordpress](images/bimg.png)
+![wordpress](images/cimg.png)
+
+
+### Despliegue de la pila ELK
+#### Creación del espacio de nombre
+En primer lugar se va a crear un nuevo namespace:
+~~~
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: kube-logging
+~~~
+
+Se crea el espacio de nombre:
+~~~
+debian@kubemaster:~/ELK$ kubectl create -f elk-ns
+namespace/kube-logging created
+~~~
+
+Comprobación:
+~~~
+debian@kubemaster:~/ELK$ kubectl get namespaces
+NAME              STATUS   AGE
+default           Active   3h59m
+kube-logging      Active   15s
+kube-node-lease   Active   3h59m
+kube-public       Active   3h59m
+kube-system       Active   3h59m
+wp-namespaces     Active   3h51m
+~~~
+
+#### Creación del StaatefulSet, clúster de Elasticsearch
+Creación del servicio:
+~~~
+kind: Service
+apiVersion: v1
+metadata:
+  name: elasticsearch
+  namespace: kube-logging
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  clusterIP: None
+  ports:
+    - port: 9200
+      name: rest
+    - port: 9300
+      name: inter-node
+~~~
+
+Creación del servicio:
+~~~
+debian@kubemaster:~/ELK$ kubectl create -f elasticsearch_svc.yaml
+service/elasticsearch created
+~~~
+
+Verificación de que el servicio se ha creado:
+~~~
+debian@kubemaster:~/ELK$ kubectl get services --namespace=kube-logging
+NAME            TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)             AGE
+elasticsearch   ClusterIP   None         <none>        9200/TCP,9300/TCP   19s
+~~~
+
+La creación de un StatefulSet le permite asignar una identidad estable a los Pods y otorga a estos un almacenamiento estable persistente, que requiere Elasticsearch. Se crea con un fichero .yaml:
+~~~
+apiVersion: apps/v1
+kind: StatefulSet ## se define el statefulset
+metadata:
+  name: es-cluster ## nombre del cluster
+  namespace: kube-logging
+spec:
+  serviceName: elasticsearch ## se asocia el servicio
+  replicas: 3 ## se especifican 3 réplicas
+  selector:
+    matchLabels:
+      app: elasticsearch ## .spect.templates.metadata
+  template: ## se definen los pods
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.6.0
+        resources:
+            limits:
+              cpu: 100m
+            requests:
+              cpu: 10m
+        ports:
+        - containerPort: 9200
+          name: rest
+          protocol: TCP
+        - containerPort: 9300
+          name: inter-node
+          protocol: TCP
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        env:
+          - name: cluster.name
+            value: k8s-logs
+          - name: node.name
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: discovery.seed_hosts
+            value: "es-cluster-0.elasticsearch,es-cluster-1.elasticsearch,es-cluster-2.elasticsearch"
+          - name: cluster.initial_master_nodes
+            value: "es-cluster-0,es-cluster-1,es-cluster-2"
+          - name: ES_JAVA_OPTS
+            value: "-Xms512m -Xmx512m"
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      - name: increase-vm-max-map
+        image: busybox
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      - name: increase-fd-ulimit
+        image: busybox
+        command: ["sh", "-c", "ulimit -n 65536"]
+        securityContext:
+          privileged: true
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: elasticsearch
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: do-block-storage
+      resources:
+        requests:
+          storage: 10Gi
+~~~
+
+Se implementa:
+~~~
+debian@kubemaster:~/ELK$ kubectl create -f elasticsearch_statefulset.yaml
+statefulset.apps/es-cluster created
+~~~
+
+Para ver el estado de la implementación del clúster se puede usar el siguiente comando:
+~~~
+kubectl rollout status sts/<cluster> --namespace=<namespace>
+~~~
+
+En nuestro caso, este es el resultado:
+~~~
+debian@kubemaster:~/ELK$ kubectl rollout status sts/es-cluster --namespace=kube-logging
+Waiting for 2 pods to be ready...
+~~~
+*
+*
+*
+*
+*
+*
+*
+*
+*
+*
+
+Comprobación:
+~~~
+kubectl port-forward es-cluster-0 9200:9200 --namespace=kube-logging
+curl http://localhost:9200/_cluster/state?pretty
+~~~
+
+Resultado:
+~~~
+{
+  "cluster_name" : "k8s-logs",
+  "compressed_size_in_bytes" : 348,
+  "cluster_uuid" : "QD06dK7CQgids-GQZooNVw",
+  "version" : 3,
+  "state_uuid" : "mjNIWXAzQVuxNNOQ7xR-qg",
+  "master_node" : "IdM5B7cUQWqFgIHXBp0JDg",
+  "blocks" : { },
+  "nodes" : {
+    "u7DoTpMmSCixOoictzHItA" : {
+      "name" : "es-cluster-1",
+      "ephemeral_id" : "ZlBflnXKRMC4RvEACHIVdg",
+      "transport_address" : "10.244.8.2:9300",
+      "attributes" : { }
+    },
+    "IdM5B7cUQWqFgIHXBp0JDg" : {
+      "name" : "es-cluster-0",
+      "ephemeral_id" : "JTk1FDdFQuWbSFAtBxdxAQ",
+      "transport_address" : "10.244.44.3:9300",
+      "attributes" : { }
+    },
+    "R8E7xcSUSbGbgrhAdyAKmQ" : {
+      "name" : "es-cluster-2",
+      "ephemeral_id" : "9wv6ke71Qqy9vk2LgJTqaA",
+      "transport_address" : "10.244.40.4:9300",
+      "attributes" : { }
+    }
+  },
+...
+~~~
+
+#### Kibana
+Servicio de kibana:
+~~~
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: kube-logging
+  labels:
+    app: kibana
+spec:
+  ports:
+  - port: 5601
+  selector:
+    app: kibana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: kube-logging
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:7.2.0
+        resources:
+          limits:
+            cpu: 1000m
+          requests:
+            cpu: 100m
+        env:
+          - name: ELASTICSEARCH_URL
+            value: http://elasticsearch:9200
+        ports:
+        - containerPort: 5601
+~~~
+
+Creación:
+~~~
+kubectl create -f kibana.yaml
+~~~
+
+Comprobación:
+~~~
+kubectl rollout status deployment/kibana --namespace=kube-logging
+
+deployment "kibana" successfully rolled out
+~~~
+
+Se necesita reenviar el puerto local al nodo de kubernetes quwe está ejecutando Kibana. Para ello se necesita saber el nombre completo del pod Kibana:
+~~~
+kubectl get pods --namespace=kube-logging
+
+NAME                      READY     STATUS    RESTARTS   AGE
+es-cluster-0              1/1       Running   0          55m
+es-cluster-1              1/1       Running   0          54m
+es-cluster-2              1/1       Running   0          54m
+kibana-6c9fb4b5b7-plbg2   1/1       Running   0          4m27s
+~~~
+
+Y se reenvía de la siguiente forma:
+~~~
+kubectl port-forward kibana-6c9fb4b5b7-plbg2 5601:5601 --namespace=kube-logging
+
+Forwarding from 127.0.0.1:5601 -> 5601
+Forwarding from [::1]:5601 -> 5601
+~~~
+
+Y se ve kubernetes.(COMPROBACION EN EL NAVEGADOR)
+
+*
+*
+*
+*
+*
+*
+*
+*
+*****************
+Paso 4: Crear el DaemonSet de Fluentd
+
+https://www.digitalocean.com/community/tutorials/how-to-set-up-an-elasticsearch-fluentd-and-kibana-efk-logging-stack-on-kubernetes-es
 
 *
 *

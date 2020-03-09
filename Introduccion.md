@@ -203,6 +203,7 @@ spec:
         - name: http
           containerPort: 80
 ~~~
+
 Las dos estrategias:
 - recreate: elimina los Pods antiguos y crea los nuevos.
 - RollingUpdate: va creando los nuevos pods, comprueba que funcionan y se eliminan los antiguos.
